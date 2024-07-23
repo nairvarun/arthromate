@@ -1,0 +1,140 @@
+Transform: AWS::Serverless-2016-10-31
+Resources:
+
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub
+        - ${ResourceName} From Stack ${AWS::StackName}
+        - ResourceName: Api
+      StageName: Prod
+      DefinitionBody:
+        openapi: '3.0'
+        info: {}
+        paths:
+          /:
+            post:
+              x-amazon-apigateway-integration:
+                credentials: !GetAtt ApiQueuesendmessageRole.Arn
+                httpMethod: POST
+                type: aws
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:sqs:path/${AWS::AccountId}/${Queue.QueueName}
+                requestParameters:
+                  integration.request.header.Content-Type: '''application/x-www-form-urlencoded'''
+                requestTemplates:
+                  application/json: Action=SendMessage&MessageBody={"requestType":"POST","data":$input.body}
+                responses:
+                  default:
+                    statusCode: 200
+              responses:
+                '200':
+                  description: 200 response
+            delete:
+              x-amazon-apigateway-integration:
+                credentials: !GetAtt ApiQueuesendmessageRole.Arn
+                httpMethod: POST
+                type: aws
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:sqs:path/${AWS::AccountId}/${Queue.QueueName}
+                requestParameters:
+                  integration.request.header.Content-Type: '''application/x-www-form-urlencoded'''
+                requestTemplates:
+                  application/json: Action=SendMessage&MessageBody={"requestType":"DELETE","data":$input.body}
+                responses:
+                  default:
+                    statusCode: 200
+              responses:
+                '200':
+                  description: 200 response
+            patch:
+              x-amazon-apigateway-integration:
+                credentials: !GetAtt ApiQueuesendmessageRole.Arn
+                httpMethod: POST
+                type: aws
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:sqs:path/${AWS::AccountId}/${Queue.QueueName}
+                requestParameters:
+                  integration.request.header.Content-Type: '''application/x-www-form-urlencoded'''
+                requestTemplates:
+                  application/json: Action=SendMessage&MessageBody={"requestType":"PATCH","data":$input.body}
+                responses:
+                  default:
+                    statusCode: 200
+              responses:
+                '200':
+                  description: 200 response
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+      Cors:
+        MaxAge: 5
+
+  Queue:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+
+  ApiQueuesendmessageRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+        Version: '2012-10-17'
+      Path: /
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action: sqs:SendMessage
+                Effect: Allow
+                Resource: !GetAtt Queue.Arn
+            Version: '2012-10-17'
+          PolicyName: ApiQueuesendmessagePolicy
+
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: Function
+      CodeUri: src/Function
+      Handler: handler.handler
+      Runtime: python3.12
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Events:
+        Queue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt Queue.Arn
+            BatchSize: 1
+      Environment:
+        Variables:
+          TABLE_TABLE_NAME: !Ref Table
+          TABLE_TABLE_ARN: !GetAtt Table.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Table
+
+  FunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Function}
