@@ -1,13 +1,9 @@
-- (cognito)
-- api
-- q
-- dlq
-- dlq lambda
-- q lambda create
-- q lambda read
-- q lambda update
-- q lambda delete
-- ddb
+#Arthromate
+## group members
+- Varun Nair
+- Gul Tandon
+- Nadir Khan
+- Tarun Jena
 
 
 {
